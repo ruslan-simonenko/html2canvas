@@ -40,8 +40,7 @@ function html2canvas(nodeList, options) {
     }
 
     var node = ((nodeList === undefined) ? [document.documentElement] : ((nodeList.length) ? nodeList : [nodeList]))[0];
-    node.setAttribute(html2canvasNodeAttribute + index, index);
-    return renderDocument(node.ownerDocument, options, node.ownerDocument.defaultView.innerWidth, node.ownerDocument.defaultView.innerHeight, index).then(function(canvas) {
+    return renderNode(node, options).then(function(canvas) {
         if (typeof(options.onrendered) === "function") {
             log("options.onrendered is deprecated, html2canvas returns a Promise containing the canvas");
             options.onrendered(canvas);
@@ -64,21 +63,6 @@ module.exports = html2canvasExport;
 if (typeof(define) === 'function' && define.amd) {
     define('html2canvas', [], function() {
         return html2canvasExport;
-    });
-}
-
-function renderDocument(document, options, windowWidth, windowHeight, html2canvasIndex) {
-    return createWindowClone(document, document, windowWidth, windowHeight, options, document.defaultView.pageXOffset, document.defaultView.pageYOffset).then(function(container) {
-        log("Document cloned");
-        var attributeName = html2canvasNodeAttribute + html2canvasIndex;
-        var selector = "[" + attributeName + "='" + html2canvasIndex + "']";
-        document.querySelector(selector).removeAttribute(attributeName);
-        var clonedWindow = container.contentWindow;
-        var node = clonedWindow.document.querySelector(selector);
-        var oncloneHandler = (typeof(options.onclone) === "function") ? Promise.resolve(options.onclone(clonedWindow.document)) : Promise.resolve(true);
-        return oncloneHandler.then(function() {
-            return renderWindow(node, container, options, windowWidth, windowHeight);
-        });
     });
 }
 
@@ -113,6 +97,20 @@ function cleanupContainer(container, options) {
         container.parentNode.removeChild(container);
         log("Cleaned up container");
     }
+}
+
+function renderNode(node, options) {
+    var clonedWindow = window;
+    var support = new Support(clonedWindow.document);
+    var imageLoader = new ImageLoader(options, support);
+    var bounds = getBounds(node);
+    var width = options.width || bounds.width;
+    var height = options.height || bounds.height;
+    var renderer = new options.renderer(width, height, imageLoader, options, document);
+    var parser = new NodeParser(node, renderer, support, imageLoader, options);
+    return parser.ready.then(function() {
+        return renderer.canvas;
+    });
 }
 
 function crop(canvas, bounds) {
